@@ -15,4 +15,7 @@ protocol EmojiStoreProtocol {
     var frequentEmojis: [Emoji] { get }
     func search(query: String) -> [Emoji]
     func recordUsage(of emoji: Emoji)
+
+    /// Clears all frecency data, resetting the Recent section to empty.
+    func clearFrecencyData()
 }

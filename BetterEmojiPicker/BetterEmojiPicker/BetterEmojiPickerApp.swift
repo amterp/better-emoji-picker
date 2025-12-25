@@ -56,6 +56,13 @@ struct MenuBarView: View {
             }
             .keyboardShortcut("e", modifiers: [.command])
 
+            Divider()
+
+            Button("Settings...") {
+                appDelegate.showSettings()
+            }
+            .keyboardShortcut(",", modifiers: [.command])
+
             Button("Setup Assistant...") {
                 appDelegate.showSetupWizard()
             }
@@ -121,8 +128,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     // MARK: - Services
 
-    /// The emoji data store
-    private var emojiStore: EmojiStore!
+    /// The emoji data store (internal for SettingsView access)
+    private(set) var emojiStore: EmojiStore!
 
     /// The picker view model (internal for PickerContentView access)
     private(set) var pickerViewModel: PickerViewModel!
@@ -135,6 +142,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// The setup wizard window
     private var setupWindow: NSWindow?
+
+    /// The settings window
+    private var settingsWindow: NSWindow?
 
     /// The app that was frontmost before we showed the picker
     /// Used to return focus for emoji insertion
@@ -302,7 +312,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
 
             // Check if the click is outside the picker panel
-            let clickLocation = event.locationInWindow
             let screenLocation = NSEvent.mouseLocation
 
             // Get the panel frame in screen coordinates
@@ -363,6 +372,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Closes the setup wizard window.
     private func closeSetupWizard() {
         setupWindow?.close()
+    }
+
+    // MARK: - Settings
+
+    /// Shows the settings window.
+    func showSettings() {
+        // Reuse existing window if it exists
+        if let existingWindow = settingsWindow, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let settingsView = SettingsView(
+            settingsService: SettingsService.shared,
+            emojiStore: emojiStore
+        )
+
+        settingsWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 280),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        settingsWindow?.contentView = NSHostingView(rootView: settingsView)
+        settingsWindow?.title = "BEP Settings"
+        settingsWindow?.isReleasedWhenClosed = false
+        settingsWindow?.center()
+
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Emoji Insertion

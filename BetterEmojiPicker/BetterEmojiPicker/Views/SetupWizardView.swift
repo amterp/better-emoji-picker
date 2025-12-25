@@ -47,6 +47,8 @@ struct SetupWizardView: View {
             AccessibilityStep(viewModel: viewModel)
         case .shortcut:
             ShortcutStep()
+        case .testIt:
+            TestItStep()
         case .launchAtLogin:
             LaunchAtLoginStep(viewModel: viewModel)
         case .complete:
@@ -220,6 +222,48 @@ struct ShortcutStep: View {
                 }
                 .font(.callout)
                 .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.secondary.opacity(0.1))
+            )
+
+            Spacer()
+        }
+        .padding(.top, 20)
+    }
+}
+
+struct TestItStep: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 48))
+                .foregroundColor(.purple)
+
+            Text("Try It Out!")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("Press **⌃⌘Space** now to open the emoji picker and explore!\n\nAny emoji you select will be copied to your clipboard, ready to paste anywhere.")
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .lineSpacing(4)
+
+            // Visual hint
+            VStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    KeyboardShortcutBadge(keys: ["⌃", "⌘", "Space"])
+                    Text("opens the picker")
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    KeyboardShortcutBadge(keys: ["Esc"])
+                    Text("closes without selecting")
+                        .foregroundColor(.secondary)
+                }
             }
             .padding()
             .background(

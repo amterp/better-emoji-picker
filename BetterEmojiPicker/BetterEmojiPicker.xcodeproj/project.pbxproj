@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C0B338E22EFD333400808732 /* TOMLKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0B338E12EFD333400808732 /* TOMLKit */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C0516CBB2EFBFBD100EF5C42 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +56,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C0B338E22EFD333400808732 /* TOMLKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +117,7 @@
 			);
 			name = BetterEmojiPicker;
 			packageProductDependencies = (
+				C0B338E12EFD333400808732 /* TOMLKit */,
 			);
 			productName = BetterEmojiPicker;
 			productReference = C0516CA92EFBFBCF00EF5C42 /* BetterEmojiPicker.app */;
@@ -195,6 +201,9 @@
 			);
 			mainGroup = C0516CA02EFBFBCF00EF5C42;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C0B338E02EFD333400808732 /* XCRemoteSwiftPackageReference "TOMLKit" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C0516CAA2EFBFBCF00EF5C42 /* Products */;
 			projectDirPath = "";
@@ -545,6 +554,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C0B338E02EFD333400808732 /* XCRemoteSwiftPackageReference "TOMLKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/LebJe/TOMLKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.6.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C0B338E12EFD333400808732 /* TOMLKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0B338E02EFD333400808732 /* XCRemoteSwiftPackageReference "TOMLKit" */;
+			productName = TOMLKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C0516CA12EFBFBCF00EF5C42 /* Project object */;
 }

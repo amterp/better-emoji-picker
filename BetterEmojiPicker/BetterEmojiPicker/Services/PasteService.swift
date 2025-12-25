@@ -29,8 +29,15 @@ final class PasteService: PasteServiceProtocol {
         usleep(1_000) // 1ms
         simulatePaste(to: targetPID)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.restoreClipboard()
+        // Use configurable delay from settings before restoring clipboard
+        // Must access SettingsService on main thread
+        DispatchQueue.main.async { [weak self] in
+            let delayMs = SettingsService.shared.settings.clipboardRestoreDelay
+            let delaySeconds = Double(delayMs) / 1000.0
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) {
+                self?.restoreClipboard()
+            }
         }
 
         return true

@@ -14,6 +14,7 @@ enum SetupStep: Int, CaseIterable {
     case welcome
     case accessibility
     case shortcut
+    case testIt
     case launchAtLogin
     case complete
 }
@@ -41,9 +42,9 @@ final class SetupViewModel: ObservableObject {
 
     private var permissionCheckTimer: Timer?
 
-    // MARK: - UserDefaults Keys
+    // MARK: - Legacy UserDefaults Keys (for migration)
 
-    private static let hasCompletedSetupKey = "hasCompletedSetup"
+    private static let legacyHasCompletedSetupKey = "hasCompletedSetup"
 
     // MARK: - Computed Properties
 
@@ -64,6 +65,8 @@ final class SetupViewModel: ObservableObject {
             return hasAccessibilityPermission
         case .shortcut:
             return true
+        case .testIt:
+            return true  // User can proceed whenever ready
         case .launchAtLogin:
             return true
         case .complete:
@@ -74,18 +77,33 @@ final class SetupViewModel: ObservableObject {
     // MARK: - Class Methods
 
     /// Returns true if the user has already completed setup.
+    /// Checks SettingsService first, then falls back to legacy UserDefaults for migration.
     static func hasCompletedSetup() -> Bool {
-        UserDefaults.standard.bool(forKey: hasCompletedSetupKey)
+        // Check new settings location first
+        if SettingsService.shared.settings.onboardingCompleted {
+            return true
+        }
+
+        // Check legacy UserDefaults and migrate if needed
+        if UserDefaults.standard.bool(forKey: legacyHasCompletedSetupKey) {
+            // Migrate to new settings
+            SettingsService.shared.update { $0.onboardingCompleted = true }
+            // Clean up legacy key
+            UserDefaults.standard.removeObject(forKey: legacyHasCompletedSetupKey)
+            return true
+        }
+
+        return false
     }
 
     /// Marks setup as completed.
     static func markSetupCompleted() {
-        UserDefaults.standard.set(true, forKey: hasCompletedSetupKey)
+        SettingsService.shared.update { $0.onboardingCompleted = true }
     }
 
     /// Resets setup state (for debugging or re-running setup).
     static func resetSetup() {
-        UserDefaults.standard.set(false, forKey: hasCompletedSetupKey)
+        SettingsService.shared.update { $0.onboardingCompleted = false }
     }
 
     // MARK: - Actions
