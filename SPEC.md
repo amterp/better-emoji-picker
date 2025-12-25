@@ -1,6 +1,6 @@
 # Better Emoji Picker (BEP) - Specification
 
-**Version**: 1.0
+**Version**: 1.1
 **Status**: In Development
 
 ## Overview
@@ -28,10 +28,11 @@ The built-in macOS emoji picker (Ctrl+Cmd+Space) has several limitations:
 3. **Instant Search** - Fuzzy filtering as you type
 4. **Compact Grid** - 10 emojis per row, smaller cells
 5. **Keyboard Navigation** - Arrow keys to move, Enter to insert, Escape to dismiss
-6. **Position Near Cursor** - Appears near the text insertion point
-7. **Recent/Frequent Emojis** - Shown when search field is empty
-8. **Copy Mode** - Cmd+C copies emoji to clipboard instead of inserting
+6. **Position Near Mouse** - Appears at mouse cursor position
+7. **Frecent Emojis** - Combined frequency + recency ranking shown when search is empty
+8. **Copy Mode** - Cmd+C copies emoji to clipboard (with toast feedback) instead of inserting
 9. **Setup Wizard** - Guides user through initial permissions and shortcut setup
+10. **Toggle Shortcut** - Same shortcut opens and closes the picker
 
 ### Deferred Features
 
@@ -39,6 +40,7 @@ The built-in macOS emoji picker (Ctrl+Cmd+Space) has several limitations:
 - Custom favorites/pinned emojis
 - Configurable grid density
 - Custom shortcut configuration UI
+- In-app auto-updates (Sparkle) - MVP uses GitHub releases + Homebrew Cask
 
 ## Technical Specification
 
@@ -62,23 +64,32 @@ The built-in macOS emoji picker (Ctrl+Cmd+Space) has several limitations:
 ### Permissions
 
 - **Accessibility**: Required for:
-  - Simulating Cmd+V to paste emoji
-  - Detecting text cursor position for window placement
+  - Simulating keyboard input to insert emoji (primary method)
+  - Simulating Cmd+V to paste emoji (fallback method)
 
 ### Window Behavior
 
 - **Type**: Floating panel (NSPanel)
 - **Level**: Above all windows
-- **Position**: Near text cursor, or mouse position as fallback, or screen center as final fallback
 - **Dismissal**: Escape key, click outside, or losing focus
 - **Persistence**: Stays open after emoji selection
+- **Toggle**: Re-invoking shortcut while open closes the picker
+
+### Window Positioning
+
+- **Anchor**: Top-left corner of window at mouse cursor
+- **Edge Handling** (flip anchor):
+  - If insufficient space to the right: right edge aligns with mouse instead
+  - If insufficient space below: bottom edge aligns with mouse instead
+- **Screen Bounds**: Use `NSScreen.main.visibleFrame` to account for menu bar and Dock
 
 ### Search Behavior
 
 - **Trigger**: Any typing while picker is focused
-- **Algorithm**: Fuzzy matching on emoji names and keywords
+- **Matching**: Against emoji names and keywords
+- **Algorithm**: Implementation discretion — start simple (e.g., token prefix), iterate based on feel
 - **Performance**: Filter completes in <16ms (one frame at 60fps)
-- **Empty State**: Shows recent and frequent emojis
+- **Empty State**: Shows frecent emojis, then all emojis grouped by category
 
 ### Emoji Data
 
@@ -101,14 +112,72 @@ The built-in macOS emoji picker (Ctrl+Cmd+Space) has several limitations:
 | Any letter | Start/continue search |
 | Backspace | Delete search character |
 
+**Grid Navigation Edge Behavior:**
+- **Horizontal**: Wrap to next/previous row at edges
+- **Vertical**: Stop at top/bottom (no wrapping)
+- **Partial last row**: Right arrow wraps to first emoji in next section
+- **Initial selection**: First emoji in frecent section (if populated) or first emoji overall
+
 ### Insertion Mechanism
 
+**Primary Method** (no clipboard involvement):
+1. Use `CGEventKeyboardSetUnicodeString` to simulate typing the emoji directly
+2. This avoids clipboard manipulation entirely
+
+**Fallback Method** (if primary fails):
 1. Save current clipboard contents
 2. Copy emoji to clipboard
 3. Simulate Cmd+V keystroke via CGEvent
-4. Restore original clipboard contents (after brief delay)
+4. Restore original clipboard contents after delay (default 200ms, configurable)
+5. Restoration is debounced — if user inserts multiple emojis rapidly, only restore after the last one
 
-Note: This approach requires Accessibility permission.
+Both methods require Accessibility permission.
+
+### Storage
+
+**Settings** (`~/Library/Application Support/BEP/settings.json`):
+- User preferences (sync-friendly, user can git-manage)
+- Contents:
+  - `frecencyRows`: Number of rows to show in frecent section (default: 2)
+  - `clipboardRestoreDelay`: Fallback paste delay in ms (default: 200)
+  - `onboardingCompleted`: Boolean
+  - Other user preferences as needed
+
+**Frecency Data** (UserDefaults or local file):
+- Per-emoji usage tracking, not sync-targeted
+- Per emoji: `{ score: Float, lastUsed: Date }`
+
+### Frecency Algorithm
+
+Combines frequency and recency using incremental exponential decay:
+
+**On each emoji use:**
+```
+timeSinceLastUse = now - lastUsed
+decayFactor = e^(-λ × timeSinceLastUse_in_days)
+score = (score × decayFactor) + 1.0
+lastUsed = now
+```
+
+**When sorting for display:**
+```
+timeSinceLastUse = now - lastUsed
+displayScore = score × e^(-λ × timeSinceLastUse_in_days)
+```
+
+**Decay constant**: λ ≈ 0.099 (7-day half-life)
+- Emoji used today: full weight
+- Emoji used 7 days ago: half weight
+- Emoji used 30 days ago: ~6% weight
+
+### Menu Bar
+
+- **Icon**: Custom emoji-style face icon, designed to fit macOS menu bar aesthetic
+- **Menu Items**:
+  - Open Picker
+  - Settings...
+  - Setup Assistant... (re-trigger onboarding/permissions)
+  - Quit BEP
 
 ## Architecture
 
@@ -119,38 +188,44 @@ BetterEmojiPicker/
 ├── BetterEmojiPickerApp.swift         # App entry point, menu bar setup
 ├── Views/
 │   ├── SetupWizardView.swift          # First-run permission/shortcut setup
+│   ├── SettingsView.swift             # User preferences UI
 │   ├── PickerWindow.swift             # Main floating panel container
 │   ├── SearchFieldView.swift          # Search input field
 │   ├── EmojiGridView.swift            # Grid of emoji cells
 │   └── EmojiCellView.swift            # Individual emoji button
 ├── ViewModels/
 │   ├── PickerViewModel.swift          # Picker state and logic
+│   ├── SettingsViewModel.swift        # Settings state
 │   └── SetupViewModel.swift           # Setup wizard state
 ├── Models/
 │   ├── Emoji.swift                    # Emoji data model
-│   └── EmojiCategory.swift            # Category enum
+│   ├── EmojiCategory.swift            # Category enum
+│   └── Settings.swift                 # User settings model
 ├── Services/
-│   ├── EmojiStore.swift               # Emoji loading, search, history
+│   ├── EmojiStore.swift               # Emoji loading and search
+│   ├── FrecencyService.swift          # Frecency tracking and scoring
+│   ├── SettingsService.swift          # Settings persistence
 │   ├── HotkeyService.swift            # Global shortcut registration
-│   ├── PasteService.swift             # Clipboard and paste simulation
-│   ├── CursorPositionService.swift    # Text cursor location detection
+│   ├── InsertionService.swift         # Text insertion (keyboard sim + clipboard fallback)
 │   └── PermissionService.swift        # Accessibility permission handling
 ├── Protocols/
 │   ├── EmojiStoreProtocol.swift       # For testability
+│   ├── FrecencyServiceProtocol.swift
 │   ├── HotkeyServiceProtocol.swift
-│   ├── PasteServiceProtocol.swift
+│   ├── InsertionServiceProtocol.swift
 │   └── PermissionServiceProtocol.swift
 ├── Resources/
 │   └── emojis.json                    # Bundled emoji data
 └── Tests/
     ├── EmojiStoreTests.swift
-    ├── FuzzySearchTests.swift
+    ├── FrecencyServiceTests.swift
+    ├── SearchTests.swift
     └── PickerViewModelTests.swift
 ```
 
 ### Testability Strategy
 
-Services that interact with macOS APIs (hotkey, paste, cursor position, permissions) are defined via protocols. This allows:
+Services that interact with macOS APIs (hotkey, insertion, permissions) are defined via protocols. This allows:
 
 1. **Unit tests** to use mock implementations
 2. **Production code** to use real implementations
@@ -158,7 +233,8 @@ Services that interact with macOS APIs (hotkey, paste, cursor position, permissi
 
 Areas that are intentionally NOT unit tested (but manually tested):
 - Actual hotkey registration (Carbon API)
-- Actual paste simulation (CGEvent)
+- Actual text insertion (CGEvent keyboard simulation)
+- Actual clipboard operations
 - Actual accessibility permission prompts
 
 ### Data Flow
@@ -166,12 +242,13 @@ Areas that are intentionally NOT unit tested (but manually tested):
 ```
 User presses shortcut
     → HotkeyService detects it
-    → App shows PickerWindow near cursor
+    → App shows PickerWindow at mouse position
     → User types search query
     → PickerViewModel filters via EmojiStore
     → EmojiGridView updates instantly
     → User presses Enter
-    → PasteService inserts emoji
+    → InsertionService inserts emoji (keyboard sim, clipboard fallback)
+    → FrecencyService records usage
     → Window stays open
     → User can continue or press Escape
 ```
@@ -226,11 +303,34 @@ First-run experience:
 - **Selection**: Highlighted background
 - **Hover**: Subtle highlight
 
-### Empty State (No Search)
+### Default View (No Search)
 
-- **Section 1**: "Recent" - last 20 used emojis
-- **Section 2**: "Frequent" - top 20 by usage count
-- **Divider**: Subtle line between sections
+```
+┌─────────────────────────────────────┐
+│ [Search field]                      │
+├─────────────────────────────────────┤
+│ Frecent                             │
+│ 😀 🎉 👍 ❤️ 🚀 😂 🔥 ✨ 🙏 💯        │
+│ 🤔 😊 👀 💪 🎯 😅 🙌 💡 ✅ 🌟        │
+├─────────────────────────────────────┤
+│ Smileys & Emotion                   │
+│ 😀 😃 😄 😁 😆 😅 🤣 😂 🙂 🙃        │
+│ ...                                 │
+├─────────────────────────────────────┤
+│ People & Body                       │
+│ ...                                 │
+└─────────────────────────────────────┘
+```
+
+- **Frecent Section**: Up to N rows (configurable, default 2), hidden when empty
+- **All Emojis**: Grouped by Unicode category with headers
+- **Category Order**: By expected usefulness (Smileys & Emotion first, then People, Animals, Food, etc.)
+
+### Copy Mode
+
+- **Trigger**: Cmd+C with an emoji selected
+- **Feedback**: Brief toast notification ("Copied!")
+- **Behavior**: Window closes after copy
 
 ## Software Principles
 
@@ -249,3 +349,4 @@ These principles guide all implementation decisions:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2024-12-24 | Initial specification |
+| 1.1 | 2025-12-25 | Spec refinements: mouse positioning with edge flip, frecency algorithm, keyboard insertion, toggle shortcut, grid navigation edges, menu bar details, storage architecture, copy mode feedback |
