@@ -1,0 +1,59 @@
+#!/usr/bin/env rad
+---
+Build, package, and release BEP (Better Emoji Picker).
+---
+
+args:
+    version str                       # Version to release (e.g., 1.0.0)
+    tap_path str = "../homebrew-tap"  # Path to homebrew-tap repo
+    skip_build bool                   # Skip build, use existing .app
+
+// Paths
+stdout = quiet $`pwd`
+repo = stdout.trim()
+project = "{repo}/BetterEmojiPicker"
+build_dir = "{repo}/build"
+app_path = "{build_dir}/Build/Products/Release/BetterEmojiPicker.app"
+zip_path = "{repo}/releases/BetterEmojiPicker-{version}.zip"
+cask_path = "{repo}/{tap_path}/Casks/bep.rb"
+
+// Build
+if not skip_build:
+    print("Building...")
+    quiet $`rm -rf {build_dir}` catch:
+        pass
+    $`xcodebuild -project {project}/BetterEmojiPicker.xcodeproj -scheme BetterEmojiPicker -configuration Release -derivedDataPath {build_dir} build`
+
+// Package
+print("Packaging...")
+$`mkdir -p {repo}/releases`
+quiet $`rm -f {zip_path}` catch:
+    pass
+stdout = quiet $`dirname {app_path}`
+app_dir = stdout.trim()
+$`cd {app_dir} && zip -r -y {zip_path} BetterEmojiPicker.app -x "*.DS_Store"`
+
+// SHA256
+stdout = quiet $`shasum -a 256 {zip_path}`
+sha256 = stdout.split(" ")[0]
+
+// GitHub release
+print("Creating GitHub release...")
+tag = "v{version}"
+$`gh release create {tag} {zip_path} --repo amterp/better-emoji-picker --title "BEP {tag}" --notes "BEP {tag}"`
+
+// Update cask
+print("Updating cask...")
+cask = read_file(cask_path).content
+cask = replace(cask, 'version "[^"]*"', 'version "{version}"')
+cask = replace(cask, 'sha256 "[^"]*"', 'sha256 "{sha256}"')
+write_file(cask_path, cask)
+
+// Push tap
+print("Pushing tap...")
+tap = "{repo}/{tap_path}"
+$`git -C {tap} add Casks/bep.rb`
+$`git -C {tap} commit -m "bep {version}"`
+$`git -C {tap} push`
+
+print("Done! v{version} released.")
