@@ -9,6 +9,14 @@ import Foundation
 import SwiftUI
 import Combine
 
+/// Represents a cell's position in the visual grid layout.
+private struct GridPosition: Equatable {
+    let flatIndex: Int          // Index in displayedEmojis
+    let sectionIndex: Int       // Which section (0-based)
+    let visualRow: Int          // Row in the overall visual grid (accounting for section breaks)
+    let column: Int             // Column within the row (0 to columnCount-1)
+}
+
 /// Manages the state and logic for the emoji picker interface.
 @MainActor
 final class PickerViewModel: ObservableObject {
@@ -19,11 +27,17 @@ final class PickerViewModel: ObservableObject {
     @Published var selectedIndex: Int? = nil
     @Published var isVisible: Bool = false
     @Published private(set) var sectionTitle: String = "Recent"
+    @Published private(set) var scrollToTopTrigger: Int = 0
 
     private let emojiStore: EmojiStoreProtocol
     private var cancellables = Set<AnyCancellable>()
 
     let gridColumns = 10
+
+    /// Maps flat index to grid position for navigation
+    private var gridPositions: [GridPosition] = []
+    /// Maps (visualRow, column) to flat index for reverse lookup
+    private var gridLookup: [[Int?]] = []
 
     init(emojiStore: EmojiStoreProtocol) {
         self.emojiStore = emojiStore
@@ -89,18 +103,107 @@ final class PickerViewModel: ObservableObject {
         }
 
         selectedIndex = displayedEmojis.isEmpty ? nil : 0
+        buildGridModel()
+    }
+
+    /// Builds the visual grid model for section-aware navigation.
+    /// Each section starts on a new row, so we need to track visual positions separately from flat indices.
+    private func buildGridModel() {
+        gridPositions = []
+        gridLookup = []
+
+        guard !sections.isEmpty else { return }
+
+        var flatIndex = 0
+        var currentVisualRow = 0
+
+        for (sectionIndex, section) in sections.enumerated() {
+            // Process each emoji in this section
+            for (indexInSection, _) in section.emojis.enumerated() {
+                let column = indexInSection % gridColumns
+                let rowInSection = indexInSection / gridColumns
+                let visualRow = currentVisualRow + rowInSection
+
+                // Ensure gridLookup has enough rows
+                while gridLookup.count <= visualRow {
+                    gridLookup.append(Array(repeating: nil, count: gridColumns))
+                }
+
+                let position = GridPosition(
+                    flatIndex: flatIndex,
+                    sectionIndex: sectionIndex,
+                    visualRow: visualRow,
+                    column: column
+                )
+                gridPositions.append(position)
+                gridLookup[visualRow][column] = flatIndex
+
+                flatIndex += 1
+            }
+
+            // Next section starts on a new visual row
+            if !section.emojis.isEmpty {
+                let rowsInSection = (section.emojis.count + gridColumns - 1) / gridColumns
+                currentVisualRow += rowsInSection
+            }
+        }
     }
 
     func moveUp() {
-        guard let current = selectedIndex, !displayedEmojis.isEmpty else { selectedIndex = 0; return }
-        let newIndex = current - gridColumns
-        if newIndex >= 0 { selectedIndex = newIndex }
+        guard let current = selectedIndex,
+              current < gridPositions.count,
+              !displayedEmojis.isEmpty else {
+            selectedIndex = 0
+            return
+        }
+
+        let currentPos = gridPositions[current]
+
+        // Try to find a cell directly above (same column, previous row)
+        if currentPos.visualRow > 0 {
+            // Look for a cell at (visualRow - 1, column)
+            if let targetIndex = gridLookup[currentPos.visualRow - 1][currentPos.column] {
+                selectedIndex = targetIndex
+                return
+            }
+            // If exact column not available, find the rightmost cell in the row above
+            for col in stride(from: currentPos.column, through: 0, by: -1) {
+                if let targetIndex = gridLookup[currentPos.visualRow - 1][col] {
+                    selectedIndex = targetIndex
+                    return
+                }
+            }
+        }
+        // Already at top, don't move
     }
 
     func moveDown() {
-        guard let current = selectedIndex, !displayedEmojis.isEmpty else { selectedIndex = 0; return }
-        let newIndex = current + gridColumns
-        if newIndex < displayedEmojis.count { selectedIndex = newIndex }
+        guard let current = selectedIndex,
+              current < gridPositions.count,
+              !displayedEmojis.isEmpty else {
+            selectedIndex = 0
+            return
+        }
+
+        let currentPos = gridPositions[current]
+        let maxRow = gridLookup.count - 1
+
+        // Try to find a cell directly below (same column, next row)
+        if currentPos.visualRow < maxRow {
+            // Look for a cell at (visualRow + 1, column)
+            if let targetIndex = gridLookup[currentPos.visualRow + 1][currentPos.column] {
+                selectedIndex = targetIndex
+                return
+            }
+            // If exact column not available, find the rightmost cell in the row below
+            for col in stride(from: currentPos.column, through: 0, by: -1) {
+                if let targetIndex = gridLookup[currentPos.visualRow + 1][col] {
+                    selectedIndex = targetIndex
+                    return
+                }
+            }
+        }
+        // Already at bottom, don't move
     }
 
     func moveLeft() {
@@ -120,15 +223,17 @@ final class PickerViewModel: ObservableObject {
 
     func confirmSelection() -> Emoji? {
         guard let emoji = selectedEmoji else { return nil }
+        // Record usage for persistence, but don't update display
+        // Visual update is deferred to next onShow() to avoid distracting reordering
         emojiStore.recordUsage(of: emoji)
-        if searchQuery.isEmpty { updateDisplayedEmojis() }
         return emoji
     }
 
     func selectEmoji(_ emoji: Emoji) -> Emoji {
         if let index = displayedEmojis.firstIndex(of: emoji) { selectedIndex = index }
+        // Record usage for persistence, but don't update display
+        // Visual update is deferred to next onShow() to avoid distracting reordering
         emojiStore.recordUsage(of: emoji)
-        if searchQuery.isEmpty { updateDisplayedEmojis() }
         return emoji
     }
 
@@ -136,6 +241,8 @@ final class PickerViewModel: ObservableObject {
         isVisible = true
         searchQuery = ""
         updateDisplayedEmojis()
+        // Trigger scroll to top
+        scrollToTopTrigger += 1
     }
 
     func onHide() {
@@ -144,8 +251,8 @@ final class PickerViewModel: ObservableObject {
 
     /// Records usage of an emoji without any selection or insertion logic.
     /// Used for copy-to-clipboard operations.
+    /// Visual update is deferred to next onShow() to avoid distracting reordering.
     func recordUsage(of emoji: Emoji) {
         emojiStore.recordUsage(of: emoji)
-        if searchQuery.isEmpty { updateDisplayedEmojis() }
     }
 }

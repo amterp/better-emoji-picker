@@ -116,13 +116,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Whether we have accessibility permission (for showing status in menu)
     @Published var hasAccessibilityPermission: Bool = false
 
+    /// Whether the picker is pinned (stays open on click-away)
+    @Published var isPinned: Bool = false
+
     // MARK: - Services
 
     /// The emoji data store
     private var emojiStore: EmojiStore!
 
-    /// The picker view model
-    private var pickerViewModel: PickerViewModel!
+    /// The picker view model (internal for PickerContentView access)
+    private(set) var pickerViewModel: PickerViewModel!
 
     /// The setup wizard view model
     private var setupViewModel: SetupViewModel!
@@ -136,6 +139,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// The app that was frontmost before we showed the picker
     /// Used to return focus for emoji insertion
     private var previousApp: NSRunningApplication?
+
+    /// Global mouse monitor for click-away-to-close
+    private var globalMouseMonitor: Any?
 
     // MARK: - App Lifecycle
 
@@ -240,6 +246,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         pickerPanel?.orderFrontRegardless()
         pickerPanel?.makeKey()
 
+        // Start monitoring for clicks outside the picker
+        startClickAwayMonitor()
+
         // Notify view model
         pickerViewModel.onShow()
     }
@@ -248,32 +257,77 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func hidePicker() {
         pickerPanel?.orderOut(nil)
         pickerViewModel.onHide()
+        stopClickAwayMonitor()
+
+        // Reset pin state when hiding (user explicitly dismissed or clicked away)
+        isPinned = false
     }
 
     /// Toggles the emoji picker visibility.
     func togglePicker() {
         if pickerPanel?.isVisible == true {
-            hidePicker()
+            if isPinned && !pickerPanel!.isKeyWindow {
+                // If pinned but not focused, refocus instead of hiding
+                pickerPanel?.makeKey()
+            } else {
+                // If not pinned, or already focused - close it
+                hidePicker()
+            }
         } else {
             showPicker()
+        }
+    }
+
+    /// Toggles the pinned state of the picker.
+    func togglePin() {
+        isPinned.toggle()
+    }
+
+    // MARK: - Click-Away Monitor
+
+    /// Starts monitoring for mouse clicks outside the picker window.
+    private func startClickAwayMonitor() {
+        stopClickAwayMonitor()
+
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+            guard let self = self,
+                  let panel = self.pickerPanel,
+                  panel.isVisible else {
+                return
+            }
+
+            // If pinned, don't close on click-away
+            if self.isPinned {
+                return
+            }
+
+            // Check if the click is outside the picker panel
+            let clickLocation = event.locationInWindow
+            let screenLocation = NSEvent.mouseLocation
+
+            // Get the panel frame in screen coordinates
+            let panelFrame = panel.frame
+
+            if !panelFrame.contains(screenLocation) {
+                Task { @MainActor in
+                    self.hidePicker()
+                }
+            }
+        }
+    }
+
+    /// Stops the click-away monitor.
+    private func stopClickAwayMonitor() {
+        if let monitor = globalMouseMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalMouseMonitor = nil
         }
     }
 
     /// Creates the floating picker panel.
     private func createPickerPanel() {
         pickerPanel = FloatingPanel {
-            PickerView(
-                viewModel: self.pickerViewModel,
-                onInsertEmoji: { [weak self] emoji in
-                    self?.insertEmoji(emoji)
-                },
-                onCopyEmoji: { [weak self] emoji in
-                    self?.copyEmoji(emoji)
-                },
-                onDismiss: { [weak self] in
-                    self?.hidePicker()
-                }
-            )
+            PickerContentView(appDelegate: self)
         }
     }
 
@@ -314,7 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: - Emoji Insertion
 
     /// Inserts an emoji into the currently focused application.
-    private func insertEmoji(_ emoji: Emoji) {
+    func insertEmoji(_ emoji: Emoji) {
         // Check permission
         guard PasteService.shared.hasPermission() else {
             print("⚠️ BEP: Cannot insert emoji - no accessibility permission")
@@ -351,8 +405,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: - Emoji Copy
 
     /// Copies an emoji to the clipboard without pasting.
-    private func copyEmoji(_ emoji: Emoji) {
+    func copyEmoji(_ emoji: Emoji) {
         PasteService.shared.copyToClipboard(text: emoji.emoji)
         print("📋 BEP: Copied \(emoji.emoji) to clipboard")
+    }
+}
+
+// MARK: - Picker Content View
+
+/// A wrapper view that observes the AppDelegate for pin state changes.
+/// This is needed because PickerView needs to react to isPinned changes.
+struct PickerContentView: View {
+    @ObservedObject var appDelegate: AppDelegate
+
+    var body: some View {
+        PickerView(
+            viewModel: appDelegate.pickerViewModel,
+            isPinned: appDelegate.isPinned,
+            onInsertEmoji: { emoji in
+                appDelegate.insertEmoji(emoji)
+            },
+            onCopyEmoji: { emoji in
+                appDelegate.copyEmoji(emoji)
+            },
+            onTogglePin: {
+                appDelegate.togglePin()
+            },
+            onDismiss: {
+                appDelegate.hidePicker()
+            }
+        )
     }
 }

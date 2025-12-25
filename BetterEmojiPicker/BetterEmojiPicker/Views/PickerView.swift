@@ -13,8 +13,10 @@ struct PickerView: View {
 
     @ObservedObject var viewModel: PickerViewModel
 
+    let isPinned: Bool
     let onInsertEmoji: (Emoji) -> Void
     let onCopyEmoji: (Emoji) -> Void
+    let onTogglePin: () -> Void
     let onDismiss: () -> Void
 
     @State private var showCopiedToast = false
@@ -26,10 +28,15 @@ struct PickerView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                searchField
-                    .padding(.horizontal, 12)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
+                // Search bar with pin button
+                HStack(spacing: 8) {
+                    searchField
+
+                    pinButton
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
 
                 Divider()
 
@@ -37,6 +44,7 @@ struct PickerView: View {
                     sections: viewModel.sections,
                     displayedEmojis: viewModel.displayedEmojis,
                     selectedIndex: viewModel.selectedIndex,
+                    scrollToTopTrigger: viewModel.scrollToTopTrigger,
                     onSelect: handleEmojiClick
                 )
             }
@@ -102,6 +110,18 @@ struct PickerView: View {
         RoundedRectangle(cornerRadius: cornerRadius)
             .fill(.regularMaterial)
             .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
+    }
+
+    private var pinButton: some View {
+        Button(action: onTogglePin) {
+            Image(systemName: isPinned ? "pin.fill" : "pin")
+                .font(.system(size: 12))
+                .foregroundColor(isPinned ? .accentColor : .secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(isPinned ? "Unpin (closes on click away)" : "Pin (stays open on click away)")
     }
 
     private func handleEnterKey() {

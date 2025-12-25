@@ -60,8 +60,8 @@ final class SetupViewModel: ObservableObject {
         case .welcome:
             return true
         case .accessibility:
-            // Allow proceeding even without permission, but recommend it
-            return true
+            // Require accessibility permission before proceeding
+            return hasAccessibilityPermission
         case .shortcut:
             return true
         case .launchAtLogin:
