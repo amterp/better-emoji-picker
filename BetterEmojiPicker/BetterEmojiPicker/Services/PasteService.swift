@@ -17,7 +17,7 @@ final class PasteService: PasteServiceProtocol {
     private var savedPasteboardItems: [NSPasteboardItem] = []
     private var savedChangeCount: Int = 0
 
-    func paste(text: String) -> Bool {
+    func paste(text: String, targetPID: pid_t? = nil) -> Bool {
         guard hasPermission() else {
             print("⚠️ PasteService: Missing Accessibility permission")
             return false
@@ -25,8 +25,9 @@ final class PasteService: PasteServiceProtocol {
 
         saveClipboard()
         copyToClipboard(text: text)
-        usleep(10_000)
-        simulatePaste()
+        // Minimal delay - just enough for pasteboard to sync
+        usleep(1_000) // 1ms
+        simulatePaste(to: targetPID)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.restoreClipboard()
@@ -83,7 +84,7 @@ final class PasteService: PasteServiceProtocol {
         savedPasteboardItems = []
     }
 
-    private func simulatePaste() {
+    private func simulatePaste(to targetPID: pid_t? = nil) {
         let vKeyCode: CGKeyCode = 9
         let source = CGEventSource(stateID: .combinedSessionState)
 
@@ -95,7 +96,14 @@ final class PasteService: PasteServiceProtocol {
         keyDown.flags = .maskCommand
         keyUp.flags = .maskCommand
 
-        keyDown.post(tap: .cghidEventTap)
-        keyUp.post(tap: .cghidEventTap)
+        if let pid = targetPID {
+            // Post directly to the target process - most reliable
+            keyDown.postToPid(pid)
+            keyUp.postToPid(pid)
+        } else {
+            // Fallback to system-wide posting
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+        }
     }
 }

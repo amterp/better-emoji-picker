@@ -2,16 +2,16 @@
 //  EmojiGridView.swift
 //  BetterEmojiPicker
 //
-//  A scrollable grid of emoji cells.
+//  A scrollable grid of emoji cells organized by sections.
 //
 
 import SwiftUI
 
-/// A scrollable grid displaying emojis in a fixed-column layout.
+/// A scrollable grid displaying emojis in sections with a fixed-column layout.
 struct EmojiGridView: View {
 
-    let emojis: [Emoji]
-    let sectionTitle: String
+    let sections: [EmojiSection]
+    let displayedEmojis: [Emoji]  // Flat list for selection index mapping
     let selectedIndex: Int?
     let onSelect: (Emoji) -> Void
 
@@ -24,13 +24,13 @@ struct EmojiGridView: View {
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    sectionHeader
-
-                    if emojis.isEmpty {
+                LazyVStack(alignment: .leading, spacing: 12) {
+                    if sections.isEmpty || (sections.count == 1 && sections[0].emojis.isEmpty) {
                         emptyState
                     } else {
-                        emojiGrid
+                        ForEach(sections) { section in
+                            sectionView(section)
+                        }
                     }
                 }
                 .padding(.horizontal, 8)
@@ -38,32 +38,36 @@ struct EmojiGridView: View {
             }
             // macOS 13.0 compatible onChange syntax
             .onChange(of: selectedIndex) { newValue in
-                if let index = newValue, index < emojis.count {
+                if let index = newValue, index < displayedEmojis.count {
                     withAnimation(.easeInOut(duration: 0.15)) {
-                        scrollProxy.scrollTo(emojis[index].id, anchor: .center)
+                        scrollProxy.scrollTo(displayedEmojis[index].id, anchor: .center)
                     }
                 }
             }
         }
     }
 
-    private var sectionHeader: some View {
-        Text(sectionTitle)
-            .font(.caption)
-            .foregroundColor(.secondary)
-            .padding(.leading, 4)
-            .padding(.top, 4)
-    }
+    @ViewBuilder
+    private func sectionView(_ section: EmojiSection) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Section header
+            Text(section.title)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(.secondary)
+                .padding(.leading, 4)
 
-    private var emojiGrid: some View {
-        LazyVGrid(columns: columns, spacing: 2) {
-            ForEach(Array(emojis.enumerated()), id: \.element.id) { index, emoji in
-                EmojiCellView(
-                    emoji: emoji,
-                    isSelected: index == selectedIndex,
-                    onSelect: onSelect
-                )
-                .id(emoji.id)
+            // Emoji grid for this section
+            LazyVGrid(columns: columns, spacing: 2) {
+                ForEach(section.emojis) { emoji in
+                    let flatIndex = displayedEmojis.firstIndex(of: emoji)
+                    EmojiCellView(
+                        emoji: emoji,
+                        isSelected: flatIndex == selectedIndex,
+                        onSelect: onSelect
+                    )
+                    .id(emoji.id)
+                }
             }
         }
     }

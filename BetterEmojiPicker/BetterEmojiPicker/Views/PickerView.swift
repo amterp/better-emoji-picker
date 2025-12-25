@@ -14,28 +14,42 @@ struct PickerView: View {
     @ObservedObject var viewModel: PickerViewModel
 
     let onInsertEmoji: (Emoji) -> Void
+    let onCopyEmoji: (Emoji) -> Void
     let onDismiss: () -> Void
 
+    @State private var showCopiedToast = false
 
     private let panelWidth: CGFloat = 400
     private let panelHeight: CGFloat = 320
     private let cornerRadius: CGFloat = 12
 
     var body: some View {
-        VStack(spacing: 0) {
-            searchField
-                .padding(.horizontal, 12)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
+        ZStack {
+            VStack(spacing: 0) {
+                searchField
+                    .padding(.horizontal, 12)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
 
-            Divider()
+                Divider()
 
-            EmojiGridView(
-                emojis: viewModel.displayedEmojis,
-                sectionTitle: viewModel.sectionTitle,
-                selectedIndex: viewModel.selectedIndex,
-                onSelect: handleEmojiClick
-            )
+                EmojiGridView(
+                    sections: viewModel.sections,
+                    displayedEmojis: viewModel.displayedEmojis,
+                    selectedIndex: viewModel.selectedIndex,
+                    onSelect: handleEmojiClick
+                )
+            }
+
+            // Toast overlay - positioned at bottom
+            if showCopiedToast {
+                VStack {
+                    Spacer()
+                    ToastView(message: "Copied!")
+                        .padding(.bottom, 16)
+                }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
         }
         .frame(width: panelWidth, height: panelHeight)
         .background(panelBackground)
@@ -48,7 +62,8 @@ struct PickerView: View {
                 onLeftArrow: { viewModel.moveLeft() },
                 onRightArrow: { viewModel.moveRight() },
                 onReturn: { handleEnterKey() },
-                onEscape: { onDismiss() }
+                onEscape: { onDismiss() },
+                onCopy: { handleCopyKey() }
             )
         )
     }
@@ -99,6 +114,28 @@ struct PickerView: View {
         let selectedEmoji = viewModel.selectEmoji(emoji)
         onInsertEmoji(selectedEmoji)
     }
+
+    private func handleCopyKey() {
+        guard let emoji = viewModel.selectedEmoji else { return }
+        viewModel.recordUsage(of: emoji)
+        onCopyEmoji(emoji)
+
+        // Show toast briefly
+        withAnimation(.easeInOut(duration: 0.15)) {
+            showCopiedToast = true
+        }
+
+        // Hide toast and dismiss after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            withAnimation(.easeInOut(duration: 0.15)) {
+                showCopiedToast = false
+            }
+            // Dismiss picker after toast fades
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                onDismiss()
+            }
+        }
+    }
 }
 
 // MARK: - Keyboard Event Handler
@@ -113,6 +150,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
     let onRightArrow: () -> Void
     let onReturn: () -> Void
     let onEscape: () -> Void
+    let onCopy: () -> Void
 
     func makeNSView(context: Context) -> KeyboardHandlerView {
         let view = KeyboardHandlerView()
@@ -122,6 +160,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
         view.onRightArrow = onRightArrow
         view.onReturn = onReturn
         view.onEscape = onEscape
+        view.onCopy = onCopy
         return view
     }
 
@@ -132,6 +171,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
         nsView.onRightArrow = onRightArrow
         nsView.onReturn = onReturn
         nsView.onEscape = onEscape
+        nsView.onCopy = onCopy
     }
 }
 
@@ -144,6 +184,7 @@ class KeyboardHandlerView: NSView {
     var onRightArrow: (() -> Void)?
     var onReturn: (() -> Void)?
     var onEscape: (() -> Void)?
+    var onCopy: (() -> Void)?
 
     private var localMonitor: Any?
 
@@ -161,6 +202,12 @@ class KeyboardHandlerView: NSView {
         // Monitor keyboard events locally (when our window has focus)
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self = self else { return event }
+
+            // Check for Cmd+C (copy)
+            if event.keyCode == 8 && event.modifierFlags.contains(.command) {
+                self.onCopy?()
+                return nil
+            }
 
             // Check for special keys
             switch event.keyCode {

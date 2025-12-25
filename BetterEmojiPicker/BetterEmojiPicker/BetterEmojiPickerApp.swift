@@ -56,6 +56,10 @@ struct MenuBarView: View {
             }
             .keyboardShortcut("e", modifiers: [.command])
 
+            Button("Setup Assistant...") {
+                appDelegate.showSetupWizard()
+            }
+
             Divider()
 
             // App info
@@ -81,9 +85,9 @@ struct MenuBarView: View {
                 .foregroundColor(.green)
         } else {
             Button {
-                appDelegate.requestAccessibilityPermission()
+                appDelegate.showSetupWizard()
             } label: {
-                Label("Grant Accessibility Permission", systemImage: "exclamationmark.triangle.fill")
+                Label("Setup Required", systemImage: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
             }
         }
@@ -120,8 +124,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// The picker view model
     private var pickerViewModel: PickerViewModel!
 
+    /// The setup wizard view model
+    private var setupViewModel: SetupViewModel!
+
     /// The floating panel containing the picker
     private var pickerPanel: FloatingPanel?
+
+    /// The setup wizard window
+    private var setupWindow: NSWindow?
+
+    /// The app that was frontmost before we showed the picker
+    /// Used to return focus for emoji insertion
+    private var previousApp: NSRunningApplication?
 
     // MARK: - App Lifecycle
 
@@ -140,6 +154,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Hide dock icon (should already be set via Info.plist, but ensure it)
         NSApp.setActivationPolicy(.accessory)
+
+        // Show setup wizard on first run
+        if !SetupViewModel.hasCompletedSetup() {
+            showSetupWizard()
+        }
     }
 
     /// Called when the application is about to terminate.
@@ -159,6 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         // Create the picker view model
         pickerViewModel = PickerViewModel(emojiStore: emojiStore)
+
+        // Create the setup view model
+        setupViewModel = SetupViewModel()
     }
 
     // MARK: - Permissions
@@ -205,6 +227,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     /// Shows the emoji picker.
     func showPicker() {
+        // Remember the frontmost app so we can return focus for pasting
+        previousApp = NSWorkspace.shared.frontmostApplication
+
         // Create panel if needed
         if pickerPanel == nil {
             createPickerPanel()
@@ -242,11 +267,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 onInsertEmoji: { [weak self] emoji in
                     self?.insertEmoji(emoji)
                 },
+                onCopyEmoji: { [weak self] emoji in
+                    self?.copyEmoji(emoji)
+                },
                 onDismiss: { [weak self] in
                     self?.hidePicker()
                 }
             )
         }
+    }
+
+    // MARK: - Setup Wizard
+
+    /// Shows the setup wizard window.
+    func showSetupWizard() {
+        // Reset the view model for a fresh wizard experience
+        setupViewModel = SetupViewModel()
+
+        // Always recreate the window to ensure fresh state
+        let wizardView = SetupWizardView(viewModel: setupViewModel) { [weak self] in
+            self?.closeSetupWizard()
+            // Refresh permission status after setup
+            self?.checkPermissions()
+        }
+
+        setupWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 420),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        setupWindow?.contentView = NSHostingView(rootView: wizardView)
+        setupWindow?.title = "Setup BEP"
+        setupWindow?.isReleasedWhenClosed = false
+        setupWindow?.center()
+
+        setupWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Closes the setup wizard window.
+    private func closeSetupWizard() {
+        setupWindow?.close()
     }
 
     // MARK: - Emoji Insertion
@@ -260,16 +322,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
 
-        // Paste the emoji
-        let success = PasteService.shared.paste(text: emoji.emoji)
+        // Get the target process ID before we do anything
+        let targetPID = previousApp?.processIdentifier
 
-        if success {
-            print("✅ BEP: Inserted \(emoji.emoji)")
-        } else {
-            print("⚠️ BEP: Failed to insert emoji")
+        // Resign key status from our panel so paste doesn't go to our search field
+        pickerPanel?.resignKey()
+
+        // Activate the previous app
+        previousApp?.activate(options: .activateIgnoringOtherApps)
+
+        // Paste with target process ID for reliable delivery
+        DispatchQueue.main.async { [weak self] in
+            let success = PasteService.shared.paste(text: emoji.emoji, targetPID: targetPID)
+
+            if success {
+                print("✅ BEP: Inserted \(emoji.emoji)")
+            } else {
+                print("⚠️ BEP: Failed to insert emoji")
+            }
+
+            // Restore key status after a brief delay to ensure paste events are processed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                self?.pickerPanel?.makeKey()
+            }
         }
+    }
 
-        // Note: We don't hide the picker here!
-        // This is a key feature - the picker stays open for multiple selections.
+    // MARK: - Emoji Copy
+
+    /// Copies an emoji to the clipboard without pasting.
+    private func copyEmoji(_ emoji: Emoji) {
+        PasteService.shared.copyToClipboard(text: emoji.emoji)
+        print("📋 BEP: Copied \(emoji.emoji) to clipboard")
     }
 }
