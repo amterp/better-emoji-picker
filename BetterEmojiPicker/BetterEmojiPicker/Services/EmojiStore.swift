@@ -95,6 +95,10 @@ final class EmojiStore: ObservableObject, EmojiStoreProtocol {
         print("🗑️ BEP: Cleared frecency data")
     }
 
+    func refreshRecentEmojis() {
+        updateRecentFromScores()
+    }
+
     // MARK: - Private Methods
 
     private func loadEmojisFromBundle() {

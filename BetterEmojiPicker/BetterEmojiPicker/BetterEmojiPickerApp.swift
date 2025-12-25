@@ -32,8 +32,14 @@ struct BetterEmojiPickerApp: App {
         MenuBarExtra("BEP", systemImage: "face.smiling") {
             MenuBarView(appDelegate: appDelegate)
         }
-        // We don't use WindowGroup because this is a menu bar-only app
-        // The picker appears in a floating panel, not a regular window
+
+        // Native Settings window (opened via SettingsLink or Cmd+,)
+        Settings {
+            SettingsView(
+                settingsService: SettingsService.shared,
+                emojiStore: appDelegate.emojiStore
+            )
+        }
     }
 }
 
@@ -58,8 +64,8 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Settings...") {
-                appDelegate.showSettings()
+            SettingsLink {
+                Text("Settings...")
             }
             .keyboardShortcut(",", modifiers: [.command])
 
@@ -129,22 +135,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     // MARK: - Services
 
     /// The emoji data store (internal for SettingsView access)
-    private(set) var emojiStore: EmojiStore!
+    /// Initialized in init() so it's available when Settings scene body is evaluated
+    private(set) var emojiStore: EmojiStore
 
     /// The picker view model (internal for PickerContentView access)
-    private(set) var pickerViewModel: PickerViewModel!
+    private(set) var pickerViewModel: PickerViewModel
 
     /// The setup wizard view model
-    private var setupViewModel: SetupViewModel!
+    private var setupViewModel: SetupViewModel?
+
+    // MARK: - Initialization
+
+    override init() {
+        // Initialize services that need to be available immediately for Settings scene
+        emojiStore = EmojiStore()
+        pickerViewModel = PickerViewModel(emojiStore: emojiStore)
+        super.init()
+    }
 
     /// The floating panel containing the picker
     private var pickerPanel: FloatingPanel?
 
     /// The setup wizard window
     private var setupWindow: NSWindow?
-
-    /// The settings window
-    private var settingsWindow: NSWindow?
 
     /// The app that was frontmost before we showed the picker
     /// Used to return focus for emoji insertion
@@ -185,17 +198,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         HotkeyService.shared.unregisterAll()
     }
 
-    // MARK: - Initialization
-
-    /// Initializes all services and view models.
+    /// Initializes remaining services not needed for Settings scene.
     private func initializeServices() {
-        // Create the emoji store (loads emoji data)
-        emojiStore = EmojiStore()
-
-        // Create the picker view model
-        pickerViewModel = PickerViewModel(emojiStore: emojiStore)
-
-        // Create the setup view model
+        // Create the setup view model (only needed when wizard is shown)
         setupViewModel = SetupViewModel()
     }
 
@@ -345,10 +350,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Shows the setup wizard window.
     func showSetupWizard() {
         // Reset the view model for a fresh wizard experience
-        setupViewModel = SetupViewModel()
+        let viewModel = SetupViewModel()
+        setupViewModel = viewModel
 
         // Always recreate the window to ensure fresh state
-        let wizardView = SetupWizardView(viewModel: setupViewModel) { [weak self] in
+        let wizardView = SetupWizardView(viewModel: viewModel) { [weak self] in
             self?.closeSetupWizard()
             // Refresh permission status after setup
             self?.checkPermissions()
@@ -372,37 +378,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     /// Closes the setup wizard window.
     private func closeSetupWizard() {
         setupWindow?.close()
-    }
-
-    // MARK: - Settings
-
-    /// Shows the settings window.
-    func showSettings() {
-        // Reuse existing window if it exists
-        if let existingWindow = settingsWindow, existingWindow.isVisible {
-            existingWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let settingsView = SettingsView(
-            settingsService: SettingsService.shared,
-            emojiStore: emojiStore
-        )
-
-        settingsWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 280),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        settingsWindow?.contentView = NSHostingView(rootView: settingsView)
-        settingsWindow?.title = "BEP Settings"
-        settingsWindow?.isReleasedWhenClosed = false
-        settingsWindow?.center()
-
-        settingsWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Emoji Insertion

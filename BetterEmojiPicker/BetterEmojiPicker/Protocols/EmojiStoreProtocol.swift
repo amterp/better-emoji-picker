@@ -18,4 +18,8 @@ protocol EmojiStoreProtocol {
 
     /// Clears all frecency data, resetting the Recent section to empty.
     func clearFrecencyData()
+
+    /// Refreshes the recent emojis list based on current settings.
+    /// Call this when settings that affect recent emojis may have changed.
+    func refreshRecentEmojis()
 }

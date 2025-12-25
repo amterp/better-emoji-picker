@@ -240,6 +240,8 @@ final class PickerViewModel: ObservableObject {
     func onShow() {
         isVisible = true
         searchQuery = ""
+        // Refresh recent emojis in case settings changed (e.g., frecencyRows)
+        emojiStore.refreshRecentEmojis()
         updateDisplayedEmojis()
         // Trigger scroll to top
         scrollToTopTrigger += 1
