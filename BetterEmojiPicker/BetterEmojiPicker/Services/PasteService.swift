@@ -142,4 +142,32 @@ final class PasteService: PasteServiceProtocol {
             keyUp.post(tap: .cghidEventTap)
         }
     }
+
+    /// Sends a Cmd+Z (undo) keystroke to the target application.
+    func sendUndo(to targetPID: pid_t?) {
+        guard hasPermission() else {
+            print("⚠️ PasteService: Missing Accessibility permission for undo")
+            return
+        }
+
+        let zKeyCode: CGKeyCode = 6
+        let source = CGEventSource(stateID: .combinedSessionState)
+
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: zKeyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: zKeyCode, keyDown: false) else {
+            print("⚠️ PasteService: Failed to create undo events")
+            return
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+
+        if let pid = targetPID {
+            keyDown.postToPid(pid)
+            keyUp.postToPid(pid)
+        } else {
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+        }
+    }
 }

@@ -50,7 +50,11 @@ final class PickerViewModel: ObservableObject {
         $searchQuery
             .removeDuplicates()
             .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateDisplayedEmojis() }
+            .sink { [weak self] _ in
+                self?.updateDisplayedEmojis()
+                // User edited the filter - last text edit is now "filter", not "emoji insert"
+                self?.justInsertedEmoji = false
+            }
             .store(in: &cancellables)
     }
 
@@ -151,7 +155,6 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveUp() {
-        justInsertedEmoji = false
         guard let current = selectedIndex,
               current < gridPositions.count,
               !displayedEmojis.isEmpty else {
@@ -180,7 +183,6 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveDown() {
-        justInsertedEmoji = false
         guard let current = selectedIndex,
               current < gridPositions.count,
               !displayedEmojis.isEmpty else {
@@ -210,13 +212,11 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveLeft() {
-        justInsertedEmoji = false
         guard let current = selectedIndex, !displayedEmojis.isEmpty else { selectedIndex = 0; return }
         if current > 0 { selectedIndex = current - 1 }
     }
 
     func moveRight() {
-        justInsertedEmoji = false
         guard let current = selectedIndex, !displayedEmojis.isEmpty else { selectedIndex = 0; return }
         if current < displayedEmojis.count - 1 { selectedIndex = current + 1 }
     }

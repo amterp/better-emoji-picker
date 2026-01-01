@@ -29,9 +29,15 @@ struct BetterEmojiPickerApp: App {
 
     var body: some Scene {
         // Menu bar item with dropdown menu
+        #if DEBUG
+        MenuBarExtra("🚧 BEP", systemImage: "hammer.fill") {
+            MenuBarView(appDelegate: appDelegate)
+        }
+        #else
         MenuBarExtra("BEP", systemImage: "face.smiling") {
             MenuBarView(appDelegate: appDelegate)
         }
+        #endif
 
         // Native Settings window (opened via SettingsLink or Cmd+,)
         Settings {
@@ -427,7 +433,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         print("📋 BEP: Copied \(emoji.emoji) to clipboard")
     }
 
-    // MARK: - Backspace Forwarding
+    // MARK: - Keystroke Forwarding
 
     /// Forwards a backspace keystroke to the target application.
     /// Used to "undo" a just-inserted emoji.
@@ -447,6 +453,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             PasteService.shared.sendBackspace(to: targetPID)
 
             // Restore key status after backspace is processed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                self?.pickerPanel?.makeKey()
+            }
+        }
+    }
+
+    /// Forwards a Cmd+Z (undo) keystroke to the target application.
+    /// Used to undo a just-inserted emoji.
+    func forwardUndo() {
+        guard PasteService.shared.hasPermission() else {
+            print("⚠️ BEP: Cannot forward undo - no accessibility permission")
+            return
+        }
+
+        let targetPID = previousApp?.processIdentifier
+
+        // Resign key status so the event goes to the target app
+        pickerPanel?.resignKey()
+        previousApp?.activate(options: .activateIgnoringOtherApps)
+
+        DispatchQueue.main.async { [weak self] in
+            PasteService.shared.sendUndo(to: targetPID)
+
+            // Restore key status after undo is processed
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
                 self?.pickerPanel?.makeKey()
             }
@@ -479,6 +509,9 @@ struct PickerContentView: View {
             },
             onForwardBackspace: {
                 appDelegate.forwardBackspace()
+            },
+            onForwardUndo: {
+                appDelegate.forwardUndo()
             }
         )
     }

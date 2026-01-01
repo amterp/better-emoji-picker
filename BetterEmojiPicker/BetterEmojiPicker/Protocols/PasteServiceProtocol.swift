@@ -14,4 +14,5 @@ protocol PasteServiceProtocol {
     func hasPermission() -> Bool
     func requestPermission()
     func sendBackspace(to targetPID: pid_t?)
+    func sendUndo(to targetPID: pid_t?)
 }

@@ -19,6 +19,7 @@ struct PickerView: View {
     let onTogglePin: () -> Void
     let onDismiss: () -> Void
     let onForwardBackspace: () -> Void
+    let onForwardUndo: () -> Void
 
     @State private var showCopiedToast = false
 
@@ -73,7 +74,8 @@ struct PickerView: View {
                 onReturn: { handleEnterKey() },
                 onEscape: { onDismiss() },
                 onCopy: { handleCopyKey() },
-                onBackspace: { handleBackspaceKey() }
+                onBackspace: { handleBackspaceKey() },
+                onUndo: { handleUndoKey() }
             )
         )
     }
@@ -159,16 +161,27 @@ struct PickerView: View {
         }
     }
 
-    /// Handles backspace key: forwards to target app if emoji was just inserted and search is empty.
+    /// Handles backspace key: forwards to target app if last edit was emoji insert.
     private func handleBackspaceKey() -> Bool {
-        // Only forward backspace if we just inserted an emoji and search field is empty
-        guard viewModel.justInsertedEmoji,
-              viewModel.searchQuery.isEmpty else {
+        // Only forward backspace if last edit was emoji insert
+        guard viewModel.justInsertedEmoji else {
             return false  // Let backspace pass through to search field
         }
 
-        viewModel.clearJustInsertedState()
+        // Don't clear the flag - keep forwarding until user types in filter
         onForwardBackspace()
+        return true
+    }
+
+    /// Handles Cmd+Z: forwards undo to target app if last edit was emoji insert.
+    private func handleUndoKey() -> Bool {
+        // Only forward undo if last edit was emoji insert
+        guard viewModel.justInsertedEmoji else {
+            return false  // Let Cmd+Z pass through (e.g., undo in search field)
+        }
+
+        // Don't clear the flag - keep forwarding until user types in filter
+        onForwardUndo()
         return true
     }
 }
@@ -187,6 +200,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
     let onEscape: () -> Void
     let onCopy: () -> Void
     let onBackspace: () -> Bool  // Returns true if backspace was handled (forwarded to target app)
+    let onUndo: () -> Bool       // Returns true if Cmd+Z was handled (forwarded to target app)
 
     func makeNSView(context: Context) -> KeyboardHandlerView {
         let view = KeyboardHandlerView()
@@ -198,6 +212,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
         view.onEscape = onEscape
         view.onCopy = onCopy
         view.onBackspace = onBackspace
+        view.onUndo = onUndo
         return view
     }
 
@@ -210,6 +225,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
         nsView.onEscape = onEscape
         nsView.onCopy = onCopy
         nsView.onBackspace = onBackspace
+        nsView.onUndo = onUndo
     }
 }
 
@@ -224,6 +240,7 @@ class KeyboardHandlerView: NSView {
     var onEscape: (() -> Void)?
     var onCopy: (() -> Void)?
     var onBackspace: (() -> Bool)?  // Returns true if handled (forwarded to target app)
+    var onUndo: (() -> Bool)?       // Returns true if handled (forwarded to target app)
 
     private var localMonitor: Any?
 
@@ -246,6 +263,14 @@ class KeyboardHandlerView: NSView {
             if event.keyCode == 8 && event.modifierFlags.contains(.command) {
                 self.onCopy?()
                 return nil
+            }
+
+            // Check for Cmd+Z (undo) - conditionally forward to target app
+            if event.keyCode == 6 && event.modifierFlags.contains(.command) {
+                if let handler = self.onUndo, handler() {
+                    return nil  // Consumed - forwarded to target app
+                }
+                return event  // Let it pass through
             }
 
             // Check for special keys
