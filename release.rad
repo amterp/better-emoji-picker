@@ -7,6 +7,7 @@ args:
     version str                       # Version to release (e.g., 1.0.0)
     tap_path str = "../homebrew-tap"  # Path to homebrew-tap repo
     skip_build bool                   # Skip build, use existing .app
+    push p bool                       # Push current branch to origin (requires clean git state)
 
 // Paths
 stdout = quiet $`pwd`
@@ -16,6 +17,7 @@ build_dir = "{repo}/build"
 app_path = "{build_dir}/Build/Products/Release/BetterEmojiPicker.app"
 zip_path = "{repo}/releases/BetterEmojiPicker-{version}.zip"
 cask_path = "{repo}/{tap_path}/Casks/bep.rb"
+tag = "v{version}"
 
 // Build
 if not skip_build:
@@ -37,9 +39,12 @@ $`cd {app_dir} && zip -r -y {zip_path} BetterEmojiPicker.app -x "*.DS_Store"`
 stdout = quiet $`shasum -a 256 {zip_path}`
 sha256 = stdout.split(" ")[0]
 
+// Git tag
+print("Tagging...")
+$`git tag {tag}`
+
 // GitHub release
 print("Creating GitHub release...")
-tag = "v{version}"
 $`gh release create {tag} {zip_path} --repo amterp/better-emoji-picker --title "BEP {tag}" --notes "BEP {tag}"`
 
 // Update cask
@@ -56,4 +61,14 @@ $`git -C {tap} add Casks/bep.rb`
 $`git -C {tap} commit -m "bep {version}"`
 $`git -C {tap} push`
 
-print("Done! v{version} released.")
+// Push to origin
+if push:
+    print("Pushing to origin...")
+    stdout = quiet $`git status --porcelain`
+    if stdout.trim() != "":
+        print_err("Error: git has uncommitted changes. Commit or stash before pushing.")
+        exit(1)
+    $`git push origin HEAD`
+    $`git push origin {tag}`
+
+print("Done! {tag} released.")
