@@ -406,6 +406,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
             if success {
                 print("✅ BEP: Inserted \(emoji.emoji)")
+                // Mark that we just inserted an emoji - enables backspace forwarding
+                self?.pickerViewModel.markEmojiInserted()
             } else {
                 print("⚠️ BEP: Failed to insert emoji")
             }
@@ -423,6 +425,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func copyEmoji(_ emoji: Emoji) {
         PasteService.shared.copyToClipboard(text: emoji.emoji)
         print("📋 BEP: Copied \(emoji.emoji) to clipboard")
+    }
+
+    // MARK: - Backspace Forwarding
+
+    /// Forwards a backspace keystroke to the target application.
+    /// Used to "undo" a just-inserted emoji.
+    func forwardBackspace() {
+        guard PasteService.shared.hasPermission() else {
+            print("⚠️ BEP: Cannot forward backspace - no accessibility permission")
+            return
+        }
+
+        let targetPID = previousApp?.processIdentifier
+
+        // Resign key status so the event goes to the target app
+        pickerPanel?.resignKey()
+        previousApp?.activate(options: .activateIgnoringOtherApps)
+
+        DispatchQueue.main.async { [weak self] in
+            PasteService.shared.sendBackspace(to: targetPID)
+
+            // Restore key status after backspace is processed
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) {
+                self?.pickerPanel?.makeKey()
+            }
+        }
     }
 }
 
@@ -448,6 +476,9 @@ struct PickerContentView: View {
             },
             onDismiss: {
                 appDelegate.hidePicker()
+            },
+            onForwardBackspace: {
+                appDelegate.forwardBackspace()
             }
         )
     }

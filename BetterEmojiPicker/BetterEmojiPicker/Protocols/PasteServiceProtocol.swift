@@ -13,4 +13,5 @@ protocol PasteServiceProtocol {
     func copyToClipboard(text: String)
     func hasPermission() -> Bool
     func requestPermission()
+    func sendBackspace(to targetPID: pid_t?)
 }

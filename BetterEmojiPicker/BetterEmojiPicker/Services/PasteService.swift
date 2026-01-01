@@ -113,4 +113,33 @@ final class PasteService: PasteServiceProtocol {
             keyUp.post(tap: .cghidEventTap)
         }
     }
+
+    /// Sends a backspace keystroke to the target application.
+    func sendBackspace(to targetPID: pid_t?) {
+        guard hasPermission() else {
+            print("⚠️ PasteService: Missing Accessibility permission for backspace")
+            return
+        }
+
+        let backspaceKeyCode: CGKeyCode = 51
+        let source = CGEventSource(stateID: .combinedSessionState)
+
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: backspaceKeyCode, keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: backspaceKeyCode, keyDown: false) else {
+            print("⚠️ PasteService: Failed to create backspace events")
+            return
+        }
+
+        // No modifier flags for plain backspace
+        keyDown.flags = []
+        keyUp.flags = []
+
+        if let pid = targetPID {
+            keyDown.postToPid(pid)
+            keyUp.postToPid(pid)
+        } else {
+            keyDown.post(tap: .cghidEventTap)
+            keyUp.post(tap: .cghidEventTap)
+        }
+    }
 }

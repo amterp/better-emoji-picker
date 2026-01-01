@@ -26,6 +26,7 @@ final class PickerViewModel: ObservableObject {
     @Published private(set) var sections: [EmojiSection] = []
     @Published var selectedIndex: Int? = nil
     @Published var isVisible: Bool = false
+    @Published private(set) var justInsertedEmoji: Bool = false
     @Published private(set) var sectionTitle: String = "Recent"
     @Published private(set) var scrollToTopTrigger: Int = 0
 
@@ -150,6 +151,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveUp() {
+        justInsertedEmoji = false
         guard let current = selectedIndex,
               current < gridPositions.count,
               !displayedEmojis.isEmpty else {
@@ -178,6 +180,7 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveDown() {
+        justInsertedEmoji = false
         guard let current = selectedIndex,
               current < gridPositions.count,
               !displayedEmojis.isEmpty else {
@@ -207,11 +210,13 @@ final class PickerViewModel: ObservableObject {
     }
 
     func moveLeft() {
+        justInsertedEmoji = false
         guard let current = selectedIndex, !displayedEmojis.isEmpty else { selectedIndex = 0; return }
         if current > 0 { selectedIndex = current - 1 }
     }
 
     func moveRight() {
+        justInsertedEmoji = false
         guard let current = selectedIndex, !displayedEmojis.isEmpty else { selectedIndex = 0; return }
         if current < displayedEmojis.count - 1 { selectedIndex = current + 1 }
     }
@@ -240,6 +245,7 @@ final class PickerViewModel: ObservableObject {
     func onShow() {
         isVisible = true
         searchQuery = ""
+        justInsertedEmoji = false
         // Refresh recent emojis in case settings changed (e.g., frecencyRows)
         emojiStore.refreshRecentEmojis()
         updateDisplayedEmojis()
@@ -249,6 +255,17 @@ final class PickerViewModel: ObservableObject {
 
     func onHide() {
         isVisible = false
+        justInsertedEmoji = false
+    }
+
+    /// Marks that an emoji was just inserted. Enables backspace forwarding to target app.
+    func markEmojiInserted() {
+        justInsertedEmoji = true
+    }
+
+    /// Clears the just-inserted state (e.g., after backspace is forwarded or user navigates).
+    func clearJustInsertedState() {
+        justInsertedEmoji = false
     }
 
     /// Records usage of an emoji without any selection or insertion logic.

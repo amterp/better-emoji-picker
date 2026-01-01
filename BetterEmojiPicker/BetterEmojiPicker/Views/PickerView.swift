@@ -18,6 +18,7 @@ struct PickerView: View {
     let onCopyEmoji: (Emoji) -> Void
     let onTogglePin: () -> Void
     let onDismiss: () -> Void
+    let onForwardBackspace: () -> Void
 
     @State private var showCopiedToast = false
 
@@ -71,7 +72,8 @@ struct PickerView: View {
                 onRightArrow: { viewModel.moveRight() },
                 onReturn: { handleEnterKey() },
                 onEscape: { onDismiss() },
-                onCopy: { handleCopyKey() }
+                onCopy: { handleCopyKey() },
+                onBackspace: { handleBackspaceKey() }
             )
         )
     }
@@ -156,6 +158,19 @@ struct PickerView: View {
             }
         }
     }
+
+    /// Handles backspace key: forwards to target app if emoji was just inserted and search is empty.
+    private func handleBackspaceKey() -> Bool {
+        // Only forward backspace if we just inserted an emoji and search field is empty
+        guard viewModel.justInsertedEmoji,
+              viewModel.searchQuery.isEmpty else {
+            return false  // Let backspace pass through to search field
+        }
+
+        viewModel.clearJustInsertedState()
+        onForwardBackspace()
+        return true
+    }
 }
 
 // MARK: - Keyboard Event Handler
@@ -171,6 +186,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
     let onReturn: () -> Void
     let onEscape: () -> Void
     let onCopy: () -> Void
+    let onBackspace: () -> Bool  // Returns true if backspace was handled (forwarded to target app)
 
     func makeNSView(context: Context) -> KeyboardHandlerView {
         let view = KeyboardHandlerView()
@@ -181,6 +197,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
         view.onReturn = onReturn
         view.onEscape = onEscape
         view.onCopy = onCopy
+        view.onBackspace = onBackspace
         return view
     }
 
@@ -192,6 +209,7 @@ struct KeyboardEventHandler: NSViewRepresentable {
         nsView.onReturn = onReturn
         nsView.onEscape = onEscape
         nsView.onCopy = onCopy
+        nsView.onBackspace = onBackspace
     }
 }
 
@@ -205,6 +223,7 @@ class KeyboardHandlerView: NSView {
     var onReturn: (() -> Void)?
     var onEscape: (() -> Void)?
     var onCopy: (() -> Void)?
+    var onBackspace: (() -> Bool)?  // Returns true if handled (forwarded to target app)
 
     private var localMonitor: Any?
 
@@ -254,6 +273,12 @@ class KeyboardHandlerView: NSView {
             case 53: // Escape
                 self.onEscape?()
                 return nil
+
+            case 51: // Backspace
+                if let handler = self.onBackspace, handler() {
+                    return nil  // Consumed - forwarded to target app
+                }
+                return event  // Let it pass to search field
 
             default:
                 return event // Let other keys pass through
