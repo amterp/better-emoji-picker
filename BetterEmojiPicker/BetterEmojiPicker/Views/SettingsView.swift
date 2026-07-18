@@ -117,7 +117,7 @@ struct AboutSettingsView: View {
     @State private var showResetConfirmation = false
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
     }
 
     var body: some View {
@@ -154,7 +154,7 @@ struct AboutSettingsView: View {
                 Divider()
 
                 HStack(spacing: 20) {
-                    Link(destination: URL(string: "https://github.com/AntonioCiolworx/BetterEmojiPicker")!) {
+                    Link(destination: URL(string: "https://github.com/amterp/better-emoji-picker")!) {
                         Label("GitHub", systemImage: "link")
                     }
 
