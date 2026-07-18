@@ -15,13 +15,7 @@ A fast, keyboard-driven emoji picker for macOS.
 ## Installation
 
 ```bash
-brew install amterp/tap/bep
-```
-
-After installing, you may need to clear the quarantine flag (unsigned app):
-
-```bash
-xattr -cr /Applications/BetterEmojiPicker.app
+brew install --cask amterp/tap/bep
 ```
 
 ### Permissions

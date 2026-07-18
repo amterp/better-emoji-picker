@@ -46,8 +46,9 @@ The built-in macOS emoji picker (Ctrl+Cmd+Space) has several limitations:
 
 ### Platform Requirements
 
-- **macOS**: 13.0+ (Ventura) - for modern SwiftUI features
+- **macOS**: 14.0+ (Sonoma) - for modern SwiftUI features
 - **Architecture**: Universal (Intel + Apple Silicon)
+- **Distribution**: Developer ID signed + notarized, via Homebrew Cask
 
 ### App Type
 
@@ -344,9 +345,53 @@ These principles guide all implementation decisions:
 6. **Newcomer-friendly**: Comments assume reader is unfamiliar with Swift/macOS
 7. **Long-term maintainability**: Every decision considers future maintenance
 
+## Releasing
+
+Releases are cut locally with `./dev --version X.Y.Z`, which builds, verifies the
+signature, notarizes, staples, publishes a GitHub release, and bumps the Homebrew
+cask. The script refuses to tag or publish anything that fails a signing check.
+
+### One-time setup
+
+1. **Developer ID Application certificate** (Team ID `CV4835A2BN`).
+   Xcode > Settings > Accounts > select the team > Manage Certificates > **+** >
+   Developer ID Application. Verify with
+   `security find-identity -v -p codesigning`.
+
+   Export a `.p12` backup immediately. Apple caps the account at 5 Developer ID
+   Application certificates and self-service revocation is limited, so losing the
+   private key is painful.
+
+2. **notarytool credentials.** Create an App Store Connect API team key
+   (Users and Access > Integrations > App Store Connect API, role Developer),
+   then:
+
+   ```bash
+   xcrun notarytool store-credentials "bep-notary" \
+     --key ~/Downloads/AuthKey_XXXXXXXXXX.p8 \
+     --key-id XXXXXXXXXX \
+     --issuer <issuer-uuid>
+   ```
+
+   An API key is preferred over an app-specific password because app-specific
+   passwords are silently revoked whenever the Apple ID password changes.
+
+### Why not the Mac App Store
+
+BEP synthesizes a Cmd+V keystroke into the frontmost app. That mechanism is
+sandbox-legal - it is gated on the `PostEvent` TCC service, not `Accessibility` -
+and apps like Rocket Typist and Paste ship it on the App Store today. But the two
+services share one toggle in System Settings, reviewers conflate them, and apps
+using this exact approach have been rejected under guideline 2.4.5. Sandboxing
+would also force settings out of `~/.config/bep/` into the app container.
+
+Direct distribution with Developer ID is the norm for this category (Raycast,
+Alfred, Keyboard Maestro, Maccy) and is what BEP uses.
+
 ## Version History
 
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2024-12-24 | Initial specification |
 | 1.1 | 2025-12-25 | Spec refinements: mouse positioning with edge flip, frecency algorithm, keyboard insertion, toggle shortcut, grid navigation edges, menu bar details, storage architecture, copy mode feedback |
+| 1.2 | 2026-07-18 | Developer ID signing and notarization, release process, minimum macOS raised to 14.0 |
