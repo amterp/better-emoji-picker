@@ -111,13 +111,26 @@ if version:
         notarize_zip = "{build_dir}/notarize.zip"
         $`ditto -c -k --keepParent {app_path} {notarize_zip}`
 
-        stdout = quiet $`xcrun notarytool submit {notarize_zip} --keychain-profile {notary_profile} --wait --timeout 30m --output-format json`
+        stdout = quiet $`xcrun notarytool submit {notarize_zip} --keychain-profile {notary_profile} --wait --timeout 45m --output-format json`
         result = parse_json(stdout)
+        submission = result.id ?? "unknown"
         // notarytool has historically exited 0 even when the result is Invalid,
         // so trust the payload rather than the exit code.
-        if result.status != "Accepted":
-            print_err("Notarization {result.status} (submission {result.id}).")
-            $`xcrun notarytool log {result.id} --keychain-profile {notary_profile}`
+        status = result.status ?? ""
+
+        // On timeout there is no status field at all, just a message. That is not
+        // a rejection: the submission is still queued on Apple's side, and the
+        // first submission from a new account can take well over 20 minutes.
+        if status == "":
+            print_err("Notarization did not return a verdict in time.")
+            print_err("The submission is still processing, not rejected. Check it with:")
+            print_err("  xcrun notarytool info {submission} --keychain-profile {notary_profile}")
+            print_err("Once it reports Accepted, re-run with --skip-build to staple and publish.")
+            exit(1)
+
+        if status != "Accepted":
+            print_err("Notarization {status} (submission {submission}).")
+            $`xcrun notarytool log {submission} --keychain-profile {notary_profile}`
             exit(1)
 
         print("Stapling...")
