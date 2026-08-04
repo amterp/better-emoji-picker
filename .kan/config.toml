@@ -1,0 +1,9 @@
+kan_schema = "project/2"
+id = "p_1tXVlzW0e"
+name = "BEP"
+
+[favicon]
+  background = "#10b981"
+  icon_type = "letter"
+  letter = "B"
+  emoji = ""
