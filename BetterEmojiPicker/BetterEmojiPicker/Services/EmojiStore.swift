@@ -55,15 +55,45 @@ final class EmojiStore: ObservableObject, EmojiStoreProtocol {
 
     // MARK: - Search
 
-    func search(query: String) -> [Emoji] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else { return allEmojis }
+    /// Largest boost an emoji can earn from your own usage history.
+    ///
+    /// Deliberately smaller than the gap between two match tiers, so heavy
+    /// personal use reorders equally-good matches but can never pull a worse
+    /// match above a better one. Searching "cat" must not return 😂 just
+    /// because you use it constantly.
+    static let maxPersonalBoost: Float = 4_000
 
-        return allEmojis
+    /// Frecency score at which the personal boost maxes out. Scores decay
+    /// toward this range in normal use, so it is reached by an emoji you reach
+    /// for regularly rather than one you picked once.
+    static let personalBoostSaturation: Float = 3.0
+
+    func search(query: String) -> [Emoji] {
+        Self.rank(allEmojis, query: query, personalScores: frecencyScores)
+    }
+
+    /// Orders emojis by relevance to a query, best first. Non-matches are dropped.
+    ///
+    /// Kept pure and free of the store's state so ranking can be exercised
+    /// directly, without standing up UserDefaults-backed usage history.
+    nonisolated static func rank(_ emojis: [Emoji], query: String,
+                                 personalScores: [String: Float]) -> [Emoji] {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return emojis }
+
+        return emojis
             .map { emoji in (emoji: emoji, score: emoji.searchScore(for: trimmedQuery)) }
             .filter { $0.score > 0 }
+            .map { (emoji: $0.emoji,
+                    score: $0.score + personalBoost(frecencyScore: personalScores[$0.emoji.emoji] ?? 0)) }
             .sorted { $0.score > $1.score }
             .map { $0.emoji }
+    }
+
+    /// Ranking bonus for how much *you* use an emoji, capped at `maxPersonalBoost`.
+    nonisolated static func personalBoost(frecencyScore: Float) -> Int {
+        guard frecencyScore > 0 else { return 0 }
+        return Int(min(1.0, frecencyScore / personalBoostSaturation) * maxPersonalBoost)
     }
 
     // MARK: - Usage Tracking
@@ -103,7 +133,9 @@ final class EmojiStore: ObservableObject, EmojiStoreProtocol {
 
     private func loadEmojisFromBundle() {
         guard let url = Bundle.main.url(forResource: "emojis", withExtension: "json") else {
-            print("⚠️ EmojiStore: Could not find emojis.json in bundle")
+            print("⚠️ EmojiStore: emojis.json is missing from the app bundle. "
+                  + "The picker will be completely empty - no categories, no search results. "
+                  + "Check that Resources/emojis.json is in the target's Copy Bundle Resources phase.")
             return
         }
 
@@ -112,7 +144,10 @@ final class EmojiStore: ObservableObject, EmojiStoreProtocol {
             allEmojis = try JSONDecoder().decode([Emoji].self, from: data)
             print("✅ EmojiStore: Loaded \(allEmojis.count) emojis")
         } catch {
-            print("⚠️ EmojiStore: Failed to decode emojis.json: \(error)")
+            print("⚠️ EmojiStore: Failed to decode emojis.json: \(error). "
+                  + "The picker will be completely empty - no categories, no search results. "
+                  + "Most likely the file was hand-edited or a required field was renamed; "
+                  + "regenerate it with Scripts/build_emoji_data.py.")
         }
     }
 
