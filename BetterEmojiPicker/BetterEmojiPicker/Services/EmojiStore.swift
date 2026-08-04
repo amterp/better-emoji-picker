@@ -61,12 +61,12 @@ final class EmojiStore: ObservableObject, EmojiStoreProtocol {
     /// personal use reorders equally-good matches but can never pull a worse
     /// match above a better one. Searching "cat" must not return 😂 just
     /// because you use it constantly.
-    static let maxPersonalBoost: Float = 4_000
+    nonisolated static let maxPersonalBoost: Float = 4_000
 
     /// Frecency score at which the personal boost maxes out. Scores decay
     /// toward this range in normal use, so it is reached by an emoji you reach
     /// for regularly rather than one you picked once.
-    static let personalBoostSaturation: Float = 3.0
+    nonisolated static let personalBoostSaturation: Float = 3.0
 
     func search(query: String) -> [Emoji] {
         Self.rank(allEmojis, query: query, personalScores: frecencyScores)
