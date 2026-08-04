@@ -17,6 +17,22 @@ args:
 // keychain profile. See the "Releasing" section of SPEC.md for one-time setup.
 TEAM_ID = "CV4835A2BN"
 
+// Push to origin.
+//
+// Runs before the release so that --push is useful *to* a release rather than
+// an afterthought: the release refuses to tag a commit origin has not seen, and
+// this is how you satisfy that in one invocation.
+if push:
+    print("Pushing to origin...")
+    stdout = quiet $`git status --porcelain`
+    dirty = stdout.trim()
+    if dirty != "":
+        print_err("Refusing to push with a dirty working tree:")
+        print_err(dirty)
+        print_err("Untracked files count too - commit, stash, or gitignore them.")
+        exit(1)
+    $`git push origin HEAD --tags`
+
 if version:
     // Paths
     stdout = quiet $`pwd`
@@ -28,7 +44,39 @@ if version:
     cask_path = "{repo}/{tap_path}/Casks/bep.rb"
     tag = "v{version}"
 
-    // Preflight: fail before burning a build on missing credentials.
+    // Preflight: fail before burning a build on a bad repo state or missing
+    // credentials.
+    //
+    // A tag has to describe something someone else can actually check out, and
+    // two states quietly break that. A dirty tree ships a binary matching no
+    // commit. An unpushed HEAD is worse and less obvious: `gh release create`
+    // creates a missing tag against whatever origin's default branch points at,
+    // so the release lands on an older commit and the attached build matches
+    // nothing in the history. Both are silent, so check both here.
+    stdout = quiet $`git status --porcelain`
+    dirty = stdout.trim()
+    if dirty != "":
+        print_err("Working tree is dirty, so {tag} would not describe what ships:")
+        print_err(dirty)
+        print_err("Commit or stash before releasing.")
+        exit(1)
+
+    stdout = quiet $`git rev-parse --abbrev-ref HEAD`
+    branch = stdout.trim()
+    quiet $`git fetch origin {branch}` catch:
+        print_err("Could not reach origin to check whether {branch} is pushed.")
+        print_err("Releasing now risks tagging the wrong commit. Fix connectivity and retry.")
+        exit(1)
+
+    // --contains exits 0 either way and prints nothing when the commit is
+    // absent, so the output is the signal, not the exit code.
+    stdout = quiet $`git branch --remotes --contains HEAD --list "origin/{branch}"`
+    if stdout.trim() == "":
+        print_err("HEAD is not on origin/{branch}, so {tag} would be created against")
+        print_err("an older commit and the attached build would match no commit.")
+        print_err("Push first, or re-run this with --push.")
+        exit(1)
+
     if not skip_notarize:
         print("Preflight...")
 
@@ -154,15 +202,25 @@ if version:
     stdout = quiet $`shasum -a 256 {zip_path}`
     sha256 = stdout.split(" ")[0]
 
-    // Git tag
+    // Git tag.
+    //
+    // Pushed immediately, before the release is created: gh only invents a tag
+    // when the remote lacks one, so putting the real tag there first is what
+    // guarantees the release points at this exact commit.
     print("Tagging...")
     $`git tag {tag}`
+    $`git push origin {tag}` catch:
+        print_err("Could not push {tag} to origin. Not creating the release, because")
+        print_err("gh would otherwise tag origin's default branch head instead.")
+        print_err("Delete the local tag before retrying: git tag -d {tag}")
+        exit(1)
 
     // GitHub release
     print("Creating GitHub release...")
     $`gh release create {tag} {zip_path} --repo amterp/better-emoji-picker --title "BEP {tag}" --notes "BEP {tag}"` catch:
-        print_err("Release creation failed. Local tag {tag} still exists.")
-        print_err("Delete it before retrying: git tag -d {tag}")
+        print_err("Release creation failed. Tag {tag} exists locally and on origin.")
+        print_err("Delete both before retrying:")
+        print_err("  git tag -d {tag} && git push origin :refs/tags/{tag}")
         exit(1)
 
     // Update cask.
@@ -182,12 +240,3 @@ if version:
     $`git -C {tap} push`
 
     print("Done! {tag} released.")
-
-// Push to origin
-if push:
-    print("Pushing to origin...")
-    stdout = quiet $`git status --porcelain`
-    if stdout.trim() != "":
-        print_err("Error: git has uncommitted changes. Commit or stash before pushing.")
-        exit(1)
-    $`git push origin HEAD --tags`
