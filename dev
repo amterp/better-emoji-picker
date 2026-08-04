@@ -31,7 +31,12 @@ if push:
         print_err(dirty)
         print_err("Untracked files count too - commit, stash, or gitignore them.")
         exit(1)
-    $`git push origin HEAD --tags`
+    // Branch only, deliberately. --tags pushes every local tag, which fails
+    // outright if any one of them disagrees with the remote - v0.1.5 already
+    // does - and one stale tag from years ago should not be able to block a
+    // release. The release pushes the tag it creates, which is the only tag
+    // this script has any business publishing.
+    $`git push origin HEAD`
 
 if version:
     // Paths
