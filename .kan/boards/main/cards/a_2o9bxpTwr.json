@@ -1,0 +1,17 @@
+{
+  "_v": 4,
+  "alias": "text-emoticons",
+  "alias_explicit": false,
+  "column": "backlog-lo",
+  "created_at_millis": 1792959333534,
+  "creator": "Alexander Terp",
+  "description": "Alex's chat note, 2026-07-08: \"Unicode text emoji support\"; he confirmed 2026-10-25 that he means text emoticons such as ¯\\_(ツ)_/¯, (╯°□°)╯︵ ┻━┻ and ( ͡° ͜ʖ ͡°). The picker's list (Resources/emojis.json, 1903 entries) holds only color emoji, so these have to be typed or copied from elsewhere. Wanted: emoticons searchable by name in the same picker, inserted as plain text.",
+  "id": "a_2o9bxpTwr",
+  "position": "a0",
+  "title": "Text emoticons alongside emoji",
+  "type": "feature",
+  "updated_at_millis": 1792959333534,
+  "history": [
+    {"field":"column","value":"backlog-lo","at":1792959333534}
+  ]
+}
