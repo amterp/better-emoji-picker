@@ -1,4 +1,4 @@
-kan_schema = "board/12"
+kan_schema = "board/14"
 id = "b_1tXVlzi8Q"
 name = "main"
 default_column = "uncommitted"
@@ -72,3 +72,4 @@ default_column = "uncommitted"
   name = "type-shortcut"
   pattern_title = "![a-zA-Z]+"
   command = ".kan/hooks/type-shortcut.rad"
+  timeout = 0
